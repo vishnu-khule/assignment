@@ -19,7 +19,11 @@ import {
   updateAttachment,
 } from "@proposal/db";
 import { chunkText, extractText, imageMediaType, isImageMime } from "@proposal/ingest";
-import { extractReferenceDocument, isLlmConfigured } from "@proposal/llm";
+import {
+  extractDocumentHeuristic,
+  extractReferenceDocument,
+  isLlmConfigured,
+} from "@proposal/llm";
 
 const rootEnv = resolve(process.cwd(), "../../.env");
 const localEnv = resolve(process.cwd(), ".env");
@@ -68,28 +72,48 @@ new Worker(
     }
 
     const extractStarted = Date.now();
-    let extraction = await extractReferenceDocument({
+    const isSpreadsheet =
+      data.mime_type.includes("sheet") ||
+      data.filename.toLowerCase().endsWith(".xlsx");
+
+    let extraction = extractDocumentHeuristic({
       filename: data.filename,
       mimeType: data.mime_type,
       textContent: text,
-      imageBase64: imageType ? buffer.toString("base64") : undefined,
-      imageMediaType: imageType ?? undefined,
     });
+
+    const heuristicOk =
+      isSpreadsheet ||
+      (extraction.line_items?.length ?? 0) >= 2 ||
+      (extraction.scope_of_work?.length ?? 0) > 0;
+
     if (
-      (extraction.line_items?.length ?? 0) < 2 &&
-      (data.mime_type.includes("sheet") ||
-        data.filename.toLowerCase().endsWith(".xlsx"))
+      isLlmConfigured() &&
+      !heuristicOk &&
+      text.trim().length > 0 &&
+      process.env.INGEST_SKIP_LLM !== "true"
     ) {
-      const { extractDocumentHeuristic } = await import("@proposal/llm");
-      const sheet = extractDocumentHeuristic({
+      const llmExtraction = await extractReferenceDocument({
         filename: data.filename,
         mimeType: data.mime_type,
         textContent: text,
+        imageBase64: imageType ? buffer.toString("base64") : undefined,
+        imageMediaType: imageType ?? undefined,
       });
-      if ((sheet.line_items?.length ?? 0) >= (extraction.line_items?.length ?? 0)) {
-        extraction = sheet;
-      } else if (sheet.scope_of_work?.length) {
-        extraction = { ...extraction, scope_of_work: sheet.scope_of_work, dimensions: sheet.dimensions ?? extraction.dimensions };
+      if (
+        (llmExtraction.line_items?.length ?? 0) >
+        (extraction.line_items?.length ?? 0)
+      ) {
+        extraction = llmExtraction;
+      } else if (llmExtraction.scope_of_work?.length) {
+        extraction = {
+          ...extraction,
+          scope_of_work: llmExtraction.scope_of_work,
+          dimensions: llmExtraction.dimensions ?? extraction.dimensions,
+          line_items: extraction.line_items?.length
+            ? extraction.line_items
+            : llmExtraction.line_items,
+        };
       }
     }
     const redisUrl = process.env.REDIS_URL ?? "redis://127.0.0.1:6379";
@@ -161,6 +185,10 @@ new Worker(
           : "File stored (no extractable text)",
       }),
     );
+
+    // #region agent log
+    fetch('http://127.0.0.1:7267/ingest/5ad854ac-1ea5-4fed-88dd-abcc7750f266',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'260b82'},body:JSON.stringify({sessionId:'260b82',hypothesisId:'INGEST',location:'worker/main.ts:ingestDone',message:'ingest complete',data:{attachmentId:data.attachment_id,sessionId:data.session_id,lineItems:extraction.line_items?.length??0,heuristicOk},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     return { status: "ready", chunks: chunks.length };
     } catch (err) {

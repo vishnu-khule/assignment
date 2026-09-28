@@ -4,7 +4,7 @@ import {
   type IntakeResult,
 } from "@proposal/schemas";
 import { z } from "zod";
-import { completeChat, fastModel, getOpenAI, primaryModel } from "./client.js";
+import { completeChat, fastModel, getOpenAI } from "./client.js";
 
 export const INTAKE_SYSTEM_PROMPT = `You are an intake assistant for trade professionals. From the user message and
 attachment list, identify: trade_type (plumbing, electrical, furniture, civil,
@@ -49,10 +49,26 @@ function heuristicIntake(input: IntakeInput): IntakeResult {
     trade_type = "civil";
   }
 
+  let location: IntakeResult["location"];
+  let currency = input.default_currency ?? "USD";
+  let language = input.default_language ?? "en-US";
+
   for (const a of input.attachments) {
     const f = a.filename.toLowerCase();
     if (f.includes("plumb")) trade_type = "plumbing";
     if (f.includes("electric") || f.includes("panel")) trade_type = "electrical";
+    if (f.includes("remodel") || f.includes("estimate")) trade_type = "other";
+    if (/\bbirmingham\b/.test(f)) {
+      location = { city: "Birmingham", country: "UK" };
+      currency = "GBP";
+      language = "en-GB";
+    }
+  }
+
+  if (/\bbirmingham\b/i.test(msg)) {
+    location = { city: "Birmingham", country: "UK" };
+    currency = "GBP";
+    language = "en-GB";
   }
 
   const intent =
@@ -65,9 +81,9 @@ function heuristicIntake(input: IntakeInput): IntakeResult {
   return IntakeResultSchema.parse({
     trade_type,
     job_type: undefined,
-    language: input.default_language ?? "en-US",
-    currency: input.default_currency ?? "USD",
-    location: undefined,
+    language,
+    currency,
+    location,
     customer: {},
     summary:
       input.user_message.trim().slice(0, 280) ||
@@ -87,10 +103,7 @@ export async function runIntakeAssistant(
     return heuristicIntake(parsed);
   }
 
-  const hasDocContext =
-    parsed.attachments.length > 0 ||
-    (parsed.reference_extractions?.length ?? 0) > 0;
-  const model = hasDocContext ? primaryModel() : fastModel();
+  const model = fastModel();
 
   const text = await completeChat({
     model,

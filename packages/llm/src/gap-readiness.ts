@@ -3,7 +3,7 @@ import {
   type GapReadinessResult,
   type TradeChecklistField,
 } from "@proposal/schemas";
-import { completeChat, fastModel, getOpenAI, primaryModel } from "./client.js";
+import { completeChat, fastModel, getOpenAI } from "./client.js";
 import {
   evaluateGapReadiness,
   reconcileGapMissing,
@@ -35,7 +35,7 @@ export async function analyzeGapReadiness(
     return evaluateGapReadiness(checklist, data);
   }
 
-  const model = useDeepAnalysis ? primaryModel() : fastModel();
+  const model = fastModel();
 
   const text = await completeChat({
     model,

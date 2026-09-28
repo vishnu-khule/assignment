@@ -278,7 +278,15 @@ export function SessionPage() {
       // #region agent log
       fetch('http://127.0.0.1:7267/ingest/5ad854ac-1ea5-4fed-88dd-abcc7750f266',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'260b82'},body:JSON.stringify({sessionId:'260b82',hypothesisId:'D',location:'SessionPage.tsx:sendError',message:'mutation failed',data:{error:msg},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
-      setSendError(msg);
+      if (/session not found/i.test(msg)) {
+        autoReviewKey.current = "";
+        setSessionId(null);
+        setSendError(
+          "Session expired after an API restart — starting a fresh session. Re-attach files if needed.",
+        );
+      } else {
+        setSendError(msg);
+      }
       setAgentStreaming(false);
       setAgentLive({ step: null, phase: null, tool: null });
       setAgentStreamText("");
@@ -311,6 +319,7 @@ export function SessionPage() {
     const total = mergedChips.length;
     const readyCount = mergedChips.filter((c) => c.status === "ready").length;
     if (total === 0 || readyCount < total) return;
+    if (mergedChips.some((c) => c.status !== "ready")) return;
     const key = `${sessionId}:all:${total}`;
     if (autoReviewKey.current === key) return;
     if (sendMessage.isPending || agentStreaming || generate.isPending) return;
