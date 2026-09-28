@@ -1,0 +1,24 @@
+{
+  "name": "proposal-estimator",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:web": "pnpm --filter @proposal/web dev",
+    "dev:api": "PORT=3001 pnpm --filter @proposal/api dev",
+    "dev:worker": "pnpm --filter @proposal/worker dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "db:push": "pnpm --filter @proposal/db db:push",
+    "db:seed": "pnpm --filter @proposal/db db:seed",
+    "docs:roadmap": "pnpm exec tsx scripts/roadmap-to-docx.ts"
+  },
+  "devDependencies": {
+    "docx": "^9.5.0",
+    "tsx": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
